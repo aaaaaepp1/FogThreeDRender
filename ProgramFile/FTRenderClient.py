@@ -210,7 +210,7 @@ class Projection(object):
 		return
 
 class FTRenderModel(object):
-	def __init__(self, a_client_message_control):
+	def __init__(self):
 		if TRACE: print_doc(__name__, self)
 
 		self._projection = Projection()
@@ -221,7 +221,7 @@ class FTRenderModel(object):
 		view_class= self.default_view_class()
 		self._view = view_class(self)
 		self._controller = self._view._controller
-		self._client_message_control = a_client_message_control
+		#self._client_message_control = a_client_message_control
 
 		return
 
