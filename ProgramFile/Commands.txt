@@ -1,0 +1,6 @@
+exit_0: 終了
+add_motion: モーション開始
+  [start_position?],[start_x],[start_y],[start_z],[end_x],[end_y],[end_z],[time],[easing(liner or )]
+model: モデルデータ送信
+  [モデル名.obj]
+change_target: ターゲットオブジェクト変更
