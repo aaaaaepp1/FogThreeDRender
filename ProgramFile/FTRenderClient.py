@@ -5,6 +5,8 @@ import sys
 import os
 import urllib
 import time
+import socket
+from contextlib import closing
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -58,28 +60,46 @@ class ClientMessageControl(object):
 		with closing(self._sock):
 			self._sock.bind((self._super_host_ip, self._port))
 			
+			a_model = FTRenderModel(self)
+			a_3Dmodel = FTRenderModelObj()
+			a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
+			a_3Dmodel.rgb(1.0, 0.8, 0.8)
+			a_model.add_3d_models(a_3Dmodel)
+			# a_model.add_motion(None, [0.0, 2.0, 10.0], 5, 'ease_in_out_Cubic')
+			# a_model.add_motion(None, [50.0, 0.0, 0.0], 1, 'ease_out_Cubic')
+			# a_model.add_motion(None, [-100.0, 0.0, 0.0], 2, 'ease_out_Cubic')
+			# a_model.add_motion(None, [50.0, 0.0, 0.0], 3, 'ease_out_Cubic')
+			a_model.open()
 
-
+			self._model = a_model
 
 		return
 
-	def idle(self):
-		recieved_message = self._sock.recv(self._buffer_size)
-		self.manage_(recieved_message)
+	def wait_commands(self):
+		while True:
+			recieved_message = self._sock.recv(self._buffer_size)
+			if self.manage_(recieved_message): break
 
 		return
 
 	def manage_(line):
+		"""受信した文字列を解析する"""
+		if TRACE: print_doc(__name__, self)
 		if line == 'exit_0': 
 			sys.exit(0)
+		elif line == 'push':
+			return True
 		elif self._move:
 			lines = line.split(',')
-
-
+			start_position = None if lines[1] == False else [float(lines[2]),float(lines[3]),float(lines[4])]
+			end_position = [float(lines[5]),float(lines[6]),float(lines[7])]
+			self._model.add_motion(start_position, end_position, int(float(line[8])), line[9])
+		elif self._model:
+			pass
 		elif line == 'move': self._move = True
 		elif line == 'model': self._model = True
 
-		return
+		return False
 
 class Projection(object):
 
@@ -210,7 +230,7 @@ class Projection(object):
 		return
 
 class FTRenderModel(object):
-	def __init__(self):
+	def __init__(self, a_client_message_control):
 		if TRACE: print_doc(__name__, self)
 
 		self._projection = Projection()
@@ -221,7 +241,7 @@ class FTRenderModel(object):
 		view_class= self.default_view_class()
 		self._view = view_class(self)
 		self._controller = self._view._controller
-		#self._client_message_control = a_client_message_control
+		self._client_message_control = a_client_message_control
 
 		return
 
@@ -273,7 +293,6 @@ class FTRenderModel(object):
 		self._controller.add_motion(start_position, end_position, ease_time, ease_type)
 		return
 
-
 	def rendering(self, a_handle_object):
 		"""move_number番目のモデルだけ回転を施し、全ての3Dモデルをレンダリングする。"""
 		if TRACE: print_doc(__name__, self)
@@ -290,19 +309,15 @@ class FTRenderModel(object):
 		glTranslated(model._position_x, model._position_y, model._position_z)
 		model.rendering()
 		glTranslated(-1*model._position_x, -1*model._position_y, -1*model._position_z)
-
-		#self._marker._position_x = model._position_x
-		#self._marker._position_z = model._position_z
-		#glTranslated(self._marker._position_x, self._marker._position_y, self._marker._position_z)
-		#self._marker.rendering()
-
 		return
 
 	def idle(self):
 		"""フレームごとのModelのidle処理、これがglutIdleFuncに入る"""
 		if TRACE: print_doc(__name__, self)
 
-		#self._client_message_control.idle()
+		if sum([len(each) for each in [models._easing_list for models in self._models]]) == 0:
+			self._client_message_control.wait_commands()
+
 		self._controller.idle()
 		glutPostRedisplay()
 
@@ -814,16 +829,19 @@ def main():
 	"""
 	
 	"""
-	a_model = FTRenderModel()
-	a_3Dmodel = FTRenderModelObj()
-	a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
-	a_3Dmodel.rgb(1.0, 0.8, 0.8)
-	a_model.add_3d_models(a_3Dmodel)
-	a_model.add_motion(None, [0.0, 2.0, 10.0], 5, 'ease_in_out_Cubic')
-	a_model.add_motion(None, [50.0, 0.0, 0.0], 1, 'ease_out_Cubic')
-	a_model.add_motion(None, [-100.0, 0.0, 0.0], 2, 'ease_out_Cubic')
-	a_model.add_motion(None, [50.0, 0.0, 0.0], 3, 'ease_out_Cubic')
-	a_model.open()
+	# a_model = FTRenderModel()
+	# a_3Dmodel = FTRenderModelObj()
+	# a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
+	# a_3Dmodel.rgb(1.0, 0.8, 0.8)
+	# a_model.add_3d_models(a_3Dmodel)
+	# a_model.add_motion(None, [0.0, 2.0, 10.0], 5, 'ease_in_out_Cubic')
+	# a_model.add_motion(None, [50.0, 0.0, 0.0], 1, 'ease_out_Cubic')
+	# a_model.add_motion(None, [-100.0, 0.0, 0.0], 2, 'ease_out_Cubic')
+	# a_model.add_motion(None, [50.0, 0.0, 0.0], 3, 'ease_out_Cubic')
+	# a_model.open()
+
+	client = ClientMessageControl("192.168.10.110", 4000, 4048)
+	client.start()
 
 	return
 

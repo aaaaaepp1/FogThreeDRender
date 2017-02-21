@@ -1,6 +1,12 @@
 exit_0: 終了
+
 add_motion: モーション開始
-  [start_position?],[start_x],[start_y],[start_z],[end_x],[end_y],[end_z],[time],[easing(liner or )]
+  [start_time],[start_position?],[start_x],[start_y],[start_z],[end_x],[end_y],[end_z],[time],[easing]
+  easing: liner, ease_in_Quadratic, ease_out_Quadratic, ease_in_out_Quadratic, ease_in_Cubic, ease_out_Cubic, ease_in_out_Cubic
+
 model: モデルデータ送信
   [モデル名.obj]
+
+push: 実行
+
 change_target: ターゲットオブジェクト変更
