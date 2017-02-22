@@ -12,7 +12,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
-TRACE = True
+TRACE = False
 DEBUG = False
 FULL_SCREEN = False
 
@@ -51,6 +51,8 @@ class ClientMessageControl(object):
 		self._port = port
 		self._buffer_size = buffer_size
 		self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		self._add_motion = False
+		self._add_model = False
 
 		return
 
@@ -69,9 +71,9 @@ class ClientMessageControl(object):
 			# a_model.add_motion(None, [50.0, 0.0, 0.0], 1, 'ease_out_Cubic')
 			# a_model.add_motion(None, [-100.0, 0.0, 0.0], 2, 'ease_out_Cubic')
 			# a_model.add_motion(None, [50.0, 0.0, 0.0], 3, 'ease_out_Cubic')
+			self._model = a_model
 			a_model.open()
 
-			self._model = a_model
 
 		return
 
@@ -82,22 +84,27 @@ class ClientMessageControl(object):
 
 		return
 
-	def manage_(line):
+	def manage_(self, line):
 		"""受信した文字列を解析する"""
 		if TRACE: print_doc(__name__, self)
+
 		if line == 'exit_0': 
 			sys.exit(0)
 		elif line == 'push':
+			self._add_motion = False
+			self._add_model = False
 			return True
-		elif self._move:
+		elif self._add_motion:
 			lines = line.split(',')
-			start_position = None if lines[1] == False else [float(lines[2]),float(lines[3]),float(lines[4])]
+			start_position = None if lines[1] == 'False' else [float(lines[2]),float(lines[3]),float(lines[4])]
 			end_position = [float(lines[5]),float(lines[6]),float(lines[7])]
-			self._model.add_motion(start_position, end_position, int(float(line[8])), line[9])
-		elif self._model:
+			time = float(lines[8])
+			self._model.add_motion(start_position, end_position, time, lines[9])
+
+		elif self._add_model:
 			pass
-		elif line == 'move': self._move = True
-		elif line == 'model': self._model = True
+		elif line == 'add_motion': self._add_motion = True
+		elif line == 'add_model': self._add_model = True
 
 		return False
 
@@ -315,12 +322,21 @@ class FTRenderModel(object):
 		"""フレームごとのModelのidle処理、これがglutIdleFuncに入る"""
 		if TRACE: print_doc(__name__, self)
 
-		if sum([len(each) for each in [models._easing_list for models in self._models]]) == 0:
+		print "len: {}".format(sum([len(each) for each in [models._easing_list for models in self._models]]))
+		if sum([len(each) for each in [models._easing_list for models in self._models]]) == 0 and self._client_message_control != None:
 			self._client_message_control.wait_commands()
+			self.start_motion_()
+
 
 		self._controller.idle()
 		glutPostRedisplay()
 
+		return
+
+	def start_motion_(self):
+
+		for each in self._models:
+			each.start_motion()
 		return
 
 class FTRenderView(object):
@@ -599,7 +615,14 @@ class Easing(object):
 
 		return
 
-	def start(self, start_position, end_position, ease_time, ease_type):
+	def start(self):
+		self._time.mark_time()
+		self._start_time = self._time._marked
+		self._started = True
+
+		return
+
+	def init(self, start_position, end_position, ease_time, ease_type):
 		self._start_position = [self._object._position_x, self._object._position_y, self._object._position_z] if start_position == None else start_position
 		if start_position != None: 
 			self._object._position_x = start_position[0]
@@ -609,11 +632,8 @@ class Easing(object):
 		self._end_position = end_position
 		self._ease_time = ease_time
 		self._ease_type = ease_type
-		self._delta = (lambda list1, list2: [i + j for i, j in zip(list1, list2)])(self._end_position, self._start_position)
-		self._time.mark_time()
+		self._delta = (lambda list1, list2: [i - j for i, j in zip(list1, list2)])(self._end_position, self._start_position)
 		self._last_delta = [0.0, 0.0, 0.0]
-		self._start_time = self._time._marked
-		self._started = True
 
 		return
 
@@ -676,14 +696,21 @@ class OpenGL3DModel(object):
 
 		for (i, each) in enumerate(self._easing_list): 
 			each.idle()
-			if each.is_end(): del self._easing_list[i]  
+			if each.is_end(): del self._easing_list[i]
 		return
 
 	def add_motion(self, start_position, end_position, ease_time, ease_type):
 
 		easing = Easing(self)
-		easing.start(start_position, end_position, ease_time, ease_type)
+		easing.init(start_position, end_position, ease_time, ease_type)
 		self._easing_list.append(easing)
+		return
+
+	def start_motion(self):
+
+		for each in self._easing_list:
+			each.start()
+
 		return
 
 class OpenGLObject(object):
@@ -829,7 +856,7 @@ def main():
 	"""
 	
 	"""
-	# a_model = FTRenderModel()
+	# a_model = FTRenderModel(None)
 	# a_3Dmodel = FTRenderModelObj()
 	# a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
 	# a_3Dmodel.rgb(1.0, 0.8, 0.8)
