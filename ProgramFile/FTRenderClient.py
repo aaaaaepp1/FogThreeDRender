@@ -20,7 +20,8 @@ __author__ = 'Naoki Okamoto'
 __version__ = '0.1.0'
 __date__ = '2017/02/18'
 
-#3Dオブジェクト（ポリゴンの集合）を表す単語に、objectとmodelが混在している
+#20170219 / 3Dオブジェクト（ポリゴンの集合）を表す単語に、objectとmodelが混在している
+#20170222 / ってかClientManageControlはFTRenderControlに命令を送るべきちゃう？
 
 class Time(object):
 	def __init__(self):
@@ -53,6 +54,7 @@ class ClientMessageControl(object):
 		self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self._add_motion = False
 		self._add_model = False
+		self._setting = False
 
 		return
 
@@ -65,15 +67,10 @@ class ClientMessageControl(object):
 			a_model = FTRenderModel(self)
 			a_3Dmodel = FTRenderModelObj()
 			a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
-			a_3Dmodel.rgb(1.0, 0.8, 0.8)
+			a_3Dmodel.rgb(0.5, 0.5, 0.5)
 			a_model.add_3d_models(a_3Dmodel)
-			# a_model.add_motion(None, [0.0, 2.0, 10.0], 5, 'ease_in_out_Cubic')
-			# a_model.add_motion(None, [50.0, 0.0, 0.0], 1, 'ease_out_Cubic')
-			# a_model.add_motion(None, [-100.0, 0.0, 0.0], 2, 'ease_out_Cubic')
-			# a_model.add_motion(None, [50.0, 0.0, 0.0], 3, 'ease_out_Cubic')
 			self._model = a_model
 			a_model.open()
-
 
 		return
 
@@ -88,21 +85,42 @@ class ClientMessageControl(object):
 		"""受信した文字列を解析する"""
 		if TRACE: print_doc(__name__, self)
 
-		if line == 'exit_0': 
+		if line == '':
+			return False
+		elif line == 'exit_0': 
 			sys.exit(0)
 		elif line == 'push':
 			self._add_motion = False
 			self._add_model = False
 			return True
+		elif line == 'end_motion':
+			self._add_motion = False
+		elif line == 'end_motion':
+			self._add_model = False
+		elif line == 'setting':
+			self._setting = True
 		elif self._add_motion:
 			lines = line.split(',')
-			start_position = None if lines[1] == 'False' else [float(lines[2]),float(lines[3]),float(lines[4])]
-			end_position = [float(lines[5]),float(lines[6]),float(lines[7])]
-			time = float(lines[8])
-			self._model.add_motion(start_position, end_position, time, lines[9])
+			if lines[1] == 'Vector':
+				move_vector = [float(lines[2]),float(lines[3]),float(lines[4])]
+				start_time = float(lines[0])
+				ease_time = float(lines[5])
+				self._model.add_motion_vec(move_vector, start_time, ease_time, lines[6])
+			else:
+				start_time = float(lines[0])
+				start_position = None if lines[1] == 'False' else [float(lines[2]),float(lines[3]),float(lines[4])]
+				end_position = [float(lines[5]),float(lines[6]),float(lines[7])]
+				ease_time = float(lines[8])
+				self._model.add_motion_pos(start_position, end_position, start_time, ease_time, lines[9])
 
 		elif self._add_model:
 			pass
+		elif self._setting:
+			lines = line.split(',')
+			if lines[0] == 'rgb':
+				self._model.rgb(float(lines[1]), float(lines[2]), float(lines[3]))
+			self._setting = False
+			return True
 		elif line == 'add_motion': self._add_motion = True
 		elif line == 'add_model': self._add_model = True
 
@@ -255,7 +273,6 @@ class FTRenderModel(object):
 	def add_3d_models(self, *model_objects):
 		if TRACE: print_doc(__name__, self)
 
-
 		for each in model_objects:
 			self._models.append(each)
 
@@ -294,10 +311,25 @@ class FTRenderModel(object):
 
 		return
 
-	def add_motion(self, start_position, end_position, ease_time, ease_type):
+	def rgb(self, red, green, blue):
+		"""全モデルの色を変更"""
+		if TRACE: print_doc(__name__, self)
+
+		for each in self._models:
+			each.rgb(red, green, blue)
+
+		return
+
+	def add_motion_pos(self, start_position, end_position, start_time, ease_time, ease_type):
 		"""handle_objectにモーションを追加する処理"""
 		if TRACE: print_doc(__name__, self)
-		self._controller.add_motion(start_position, end_position, ease_time, ease_type)
+		self._controller.add_motion_pos(start_position, end_position, start_time, ease_time, ease_type)
+		return
+
+	def add_motion_vec(self, move_vector, start_time, ease_time, ease_type):
+		"""handle_objectにモーションを追加する処理"""
+		if TRACE: print_doc(__name__, self)
+		self._controller.add_motion_vec(move_vector, start_time, ease_time, ease_type)
 		return
 
 	def rendering(self, a_handle_object):
@@ -322,11 +354,10 @@ class FTRenderModel(object):
 		"""フレームごとのModelのidle処理、これがglutIdleFuncに入る"""
 		if TRACE: print_doc(__name__, self)
 
-		print "len: {}".format(sum([len(each) for each in [models._easing_list for models in self._models]]))
+		# print "len: {}".format(sum([len(each) for each in [models._easing_list for models in self._models]]))
 		if sum([len(each) for each in [models._easing_list for models in self._models]]) == 0 and self._client_message_control != None:
 			self._client_message_control.wait_commands()
 			self.start_motion_()
-
 
 		self._controller.idle()
 		glutPostRedisplay()
@@ -353,8 +384,8 @@ class FTRenderView(object):
 
 		return current_position
 
-
 	def __init__(self, a_model):
+		"""Viewクラスのコンストラクタ"""
 		if TRACE: print_doc(__name__, self)
 
 		self._model = a_model
@@ -392,6 +423,7 @@ class FTRenderView(object):
 		return
 
 	def display(self):
+		"""描画設定を行ってモデルのレンダリングメソッドを呼び出す"""
 		if TRACE: print_doc(__name__, self)
 
 
@@ -415,7 +447,7 @@ class FTRenderView(object):
 				  sight_point[0], sight_point[1], sight_point[2],
 				  up_vector[0], up_vector[1], up_vector[2])
 
-		glClearColor(1.0, 1.0, 1.0, 1.0)
+		glClearColor(0.0, 0.0, 0.0, 1.0)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
 		glEnable(GL_LIGHTING)
@@ -541,7 +573,7 @@ class FTRenderControl(object):
 
 		return
 
-	def add_motion(self, start_position, end_position, ease_time, ease_type):
+	def add_motion_pos(self, start_position, end_position, start_time, ease_time, ease_type):
 		"""対象の3Dモデルにモーションを追加"""
 		if TRACE: print_doc(__name__, self)
 
@@ -549,9 +581,22 @@ class FTRenderControl(object):
 		if self._model._handle_object < len(self._model._models):
 			model = self._model._models[self._model._handle_object]
 
-		model.add_motion(start_position, end_position, ease_time, ease_type)
+		model.add_motion_pos(start_position, end_position, start_time, ease_time, ease_type)
 
 		return
+
+	def add_motion_vec(self, move_vector, start_time, ease_time, ease_type):
+		"""対象の3Dモデルにモーションを追加"""
+		if TRACE: print_doc(__name__, self)
+
+		model = None
+		if self._model._handle_object < len(self._model._models):
+			model = self._model._models[self._model._handle_object]
+
+		model.add_motion_vec(move_vector, start_time, ease_time, ease_type)
+
+		return
+
 
 	def idle(self):
 		"""フレームごとのcontrol処理"""
@@ -581,6 +626,8 @@ class Easing(object):
 
 		if self._started:
 			progression = (self._time.time() - self._start_time) / self._ease_time
+			if progression < 0: return
+
 			easing_progression = 0.0
 			if self._ease_type == 'ease_in_Quadratic':
 				easing_progression = (lambda t, b, c: c*t*t + b)(progression, 0.0, 1.0)
@@ -597,8 +644,6 @@ class Easing(object):
 			else:
 				easing_progression = (lambda t: t)(progression)
 
-
-			
 			list_plus = (lambda list1, list2: [i + j for i, j in zip(list1, list2)])
 			list_diff = (lambda list1, list2: [i - j for i, j in zip(list1, list2)])
 			
@@ -617,12 +662,12 @@ class Easing(object):
 
 	def start(self):
 		self._time.mark_time()
-		self._start_time = self._time._marked
+		self._start_time = self._start_time + self._time._marked
 		self._started = True
 
 		return
 
-	def init(self, start_position, end_position, ease_time, ease_type):
+	def init_pos(self, start_position, end_position, start_time, ease_time, ease_type):
 		self._start_position = [self._object._position_x, self._object._position_y, self._object._position_z] if start_position == None else start_position
 		if start_position != None: 
 			self._object._position_x = start_position[0]
@@ -634,6 +679,19 @@ class Easing(object):
 		self._ease_type = ease_type
 		self._delta = (lambda list1, list2: [i - j for i, j in zip(list1, list2)])(self._end_position, self._start_position)
 		self._last_delta = [0.0, 0.0, 0.0]
+		self._start_time = start_time
+
+		return
+
+	def init_vec(self, move_vector, start_time, ease_time, ease_type):
+		self._start_position = None
+		self._last_position = self._start_position
+		self._end_position = move_vector
+		self._ease_time = ease_time
+		self._ease_type = ease_type
+		self._delta = self._end_position
+		self._last_delta = [0.0, 0.0, 0.0]
+		self._start_time = start_time
 
 		return
 
@@ -660,8 +718,8 @@ class OpenGL3DModel(object):
 		return
 
 	def display_list(self):
+		"""OpenGL3DModelのポリゴンデータをOpenGLのレンダリングリストに追加"""
 		if TRACE: print_doc(__name__, self)
-
 
 		if self._display_list == None:
 			self._display_list = glGenLists(1)
@@ -674,9 +732,22 @@ class OpenGL3DModel(object):
 		return self._display_list
 
 	def rendering(self):
+		"""OpenGL3DModelのdisplay_listメソッドを呼び出す"""
 		if TRACE: print_doc(__name__, self)
 
 		glCallList(self.display_list())
+		return
+
+	def rgb(self, red, green, blue):
+		"""モデルデータの色変更"""
+		if TRACE: print_doc(__name__, self)
+
+		for each in self._display_object:
+			each.rgb(red, green, blue)
+
+		self._display_list = None
+		self.display_list()
+
 		return
 
 	def name(self, n):
@@ -699,10 +770,17 @@ class OpenGL3DModel(object):
 			if each.is_end(): del self._easing_list[i]
 		return
 
-	def add_motion(self, start_position, end_position, ease_time, ease_type):
+	def add_motion_pos(self, start_position, end_position, start_time, ease_time, ease_type):
 
 		easing = Easing(self)
-		easing.init(start_position, end_position, ease_time, ease_type)
+		easing.init_pos(start_position, end_position, start_time, ease_time, ease_type)
+		self._easing_list.append(easing)
+		return
+
+	def add_motion_vec(self, move_vector, start_time, ease_time, ease_type):
+
+		easing = Easing(self)
+		easing.init_vec(move_vector, start_time, ease_time, ease_type)
 		self._easing_list.append(easing)
 		return
 
@@ -713,9 +791,58 @@ class OpenGL3DModel(object):
 
 		return
 
+class FTRenderModelObj(OpenGL3DModel):
+
+	def __init__(self):
+		"""モデルデータのコンストラクタ"""
+		if TRACE: print_doc(__name__, self)
+
+
+		super(FTRenderModelObj, self).__init__()
+		self._model_scale = 1.0
+
+		return
+
+	def loadObjModel(self, path):
+		"""モデルデータをロード"""
+		if TRACE: print_doc(__name__, self)
+
+		filename = os.path.join(os.getcwd(), path)
+		
+		if os.path.exists(filename) and os.path.isfile(filename):
+			pass
+		else:
+			print 'error to find the file path'
+			sys.exit(1)
+
+		with open(filename, "rU") as a_file:
+			collection_of_vertexes = []
+			while True:
+				a_string = a_file.readline()
+				if len(a_string) == 0: break
+				a_moments = a_string.split(' ')
+				if len(a_moments) == 0: continue
+				index_to_vertex = (lambda index: collection_of_vertexes[index-1])
+				if a_moments[0] == 'mtllib':
+					super(FTRenderModelObj, self).name(a_moments[1])
+				elif a_moments[0] == 'v':
+					a_vertex = map(float, a_moments[1:4])
+					collection_of_vertexes.append(a_vertex)
+				elif a_moments[0] == 'vn':
+					pass
+				elif a_moments[0] == 'f':
+					number_of_indexes = 4
+					each_moments = [each.split('/')[0] for each in a_moments[1:number_of_indexes+1]]
+					indexes = map(int, each_moments)
+					vertexes = map(index_to_vertex, indexes)
+					a_polygon = OpenGLPolygon(vertexes)
+					self._display_object.append(a_polygon)
+		return
+
 class OpenGLObject(object):
 
 	def __init__(self):
+		"""OpenGLObject（ポリゴン）のコンストラクタ"""
 		if TRACE: print_doc(__name__, self)
 
 
@@ -725,16 +852,17 @@ class OpenGLObject(object):
 		return
 
 	def rendering(self):
+		"""OpenGLObject（ポリゴン）のrenderingメソッド、色を設定"""
 		if TRACE: print_doc(__name__, self)
 
-
+		if DEBUG: print "rgb: {}, {}, {}".format(self._rgb[0], self._rgb[1], self._rgb[2])
 		glColor4d(self._rgb[0], self._rgb[1], self._rgb[2], 1.0)
 
 		return
 
 	def rgb(self, red, green, blue):
+		"""ポリゴンの色データを変更"""
 		if TRACE: print_doc(__name__, self)
-
 
 		self._rgb = [red, green, blue]
 
@@ -785,8 +913,8 @@ class OpenGLPolygon(OpenGLObject):
 		return
 
 	def rendering(self):
+		"""スーパークラスのrenderingを呼び出して（色を決定して）ポリゴンを描画"""
 		if TRACE: print_doc(__name__, self)
-
 
 		super(OpenGLPolygon, self).rendering()
 		glBegin(GL_POLYGON)
@@ -797,75 +925,10 @@ class OpenGLPolygon(OpenGLObject):
 
 		return
 
-class FTRenderModelObj(OpenGL3DModel):
-
-	def __init__(self):
-		if TRACE: print_doc(__name__, self)
-
-
-		super(FTRenderModelObj, self).__init__()
-		self._model_scale = 1.0
-
-		return
-
-	def rgb(self, red, green, blue):
-		if TRACE: print_doc(__name__, self)
-
-
-		for each in self._display_object:
-			each.rgb(red, green, blue)
-
-		return
-
-	def loadObjModel(self, path):
-		if TRACE: print_doc(__name__, self)
-
-		filename = os.path.join(os.getcwd(), path)
-		
-		if os.path.exists(filename) and os.path.isfile(filename):
-			pass
-		else:
-			print 'error to file path'
-			sys.exit(1)
-
-		with open(filename, "rU") as a_file:
-			collection_of_vertexes = []
-			while True:
-				a_string = a_file.readline()
-				if len(a_string) == 0: break
-				a_moments = a_string.split(' ')
-				if len(a_moments) == 0: continue
-				index_to_vertex = (lambda index: collection_of_vertexes[index-1])
-				if a_moments[0] == 'mtllib':
-					super(FTRenderModelObj, self).name(a_moments[1])
-				elif a_moments[0] == 'v':
-					a_vertex = map(float, a_moments[1:4])
-					collection_of_vertexes.append(a_vertex)
-				elif a_moments[0] == 'vn':
-					pass
-				elif a_moments[0] == 'f':
-					number_of_indexes = 4
-					each_moments = [each.split('/')[0] for each in a_moments[1:number_of_indexes+1]]
-					indexes = map(int, each_moments)
-					vertexes = map(index_to_vertex, indexes)
-					a_polygon = OpenGLPolygon(vertexes)
-					self._display_object.append(a_polygon)
-		return
-
 def main():
 	"""
 	
 	"""
-	# a_model = FTRenderModel(None)
-	# a_3Dmodel = FTRenderModelObj()
-	# a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
-	# a_3Dmodel.rgb(1.0, 0.8, 0.8)
-	# a_model.add_3d_models(a_3Dmodel)
-	# a_model.add_motion(None, [0.0, 2.0, 10.0], 5, 'ease_in_out_Cubic')
-	# a_model.add_motion(None, [50.0, 0.0, 0.0], 1, 'ease_out_Cubic')
-	# a_model.add_motion(None, [-100.0, 0.0, 0.0], 2, 'ease_out_Cubic')
-	# a_model.add_motion(None, [50.0, 0.0, 0.0], 3, 'ease_out_Cubic')
-	# a_model.open()
 
 	client = ClientMessageControl("192.168.10.110", 4000, 4048)
 	client.start()

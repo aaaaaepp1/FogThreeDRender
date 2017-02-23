@@ -1,12 +1,31 @@
 exit_0: 終了
 
-add_motion: モーション開始
-  [start_time],[start_position?],[start_x],[start_y],[start_z],[end_x],[end_y],[end_z],[time],[easing]
-  easing: liner, ease_in_Quadratic, ease_out_Quadratic, ease_in_out_Quadratic, ease_in_Cubic, ease_out_Cubic, ease_in_out_Cubic
+add_motion: モーション登録開始
+  [start_time],[‘True’ or ‘False’],[start_x],[start_y],[start_z],[end_x],[end_y],[end_z],[time],[easing]
+  [start_time],[‘Vector’],[vector_x],[vector_y],[vector_z],[time],[easing]
+  easing: liner, 
+          ease_in_Quadratic, ease_out_Quadratic, ease_in_out_Quadratic, 
+          ease_in_Cubic, ease_out_Cubic, ease_in_out_Cubic
+
+end_motion: モーション登録終了
+
+send_motion_data: モーションデータ送信
 
 add_model: モデルデータ送信
   [モデル名.obj]
 
+end_model: モデルデータ送信終了
+
+command_for: 特定コンピュータ向けコマンド
+  [ip address1],[ip address2]…
+
+command_for_end: 特定コンピュータ向け終了
+
+setting: 投影設定
+  [‘rgb’],[red],[green],[blue]
+  [‘camera’]
+
 push: 実行
 
 change_target: ターゲットオブジェクト変更
+

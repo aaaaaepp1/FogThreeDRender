@@ -1,0 +1,8 @@
+add_motion
+0,Vector,0,0,10,2,ease_in_out_Cubic
+1,Vector,0,2,0,1,ease_in_out_Cubic
+2,Vector,1,0,0,0.5,ease_in_out_Cubic
+2.5,Vector,-2,0,0,0.5,ease_in_out_Cubic
+3,Vector,1,0,0,1,ease_in_out_Cubic
+4,Vector,0,-2,-10,2,ease_in_out_Cubic
+push
