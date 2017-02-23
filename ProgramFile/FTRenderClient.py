@@ -930,7 +930,7 @@ def main():
 	
 	"""
 
-	client = ClientMessageControl("192.168.10.110", 4000, 4048)
+	client = ClientMessageControl(socket.gethostbyaddr(socket.gethostname()), 4000, 4048)
 	client.start()
 
 	return
