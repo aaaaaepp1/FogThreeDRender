@@ -930,7 +930,10 @@ def main():
 	
 	"""
 
-	client = ClientMessageControl(socket.gethostbyaddr(socket.gethostname()), 4000, 4048)
+	ip_addr = socket.gethostbyname(socket.gethostname())
+	print "ip address: {}".format(ip_addr)
+
+	client = ClientMessageControl(ip_addr, 4000, 4048)
 	client.start()
 
 	return
