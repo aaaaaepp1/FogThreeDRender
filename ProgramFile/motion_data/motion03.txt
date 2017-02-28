@@ -1,0 +1,13 @@
+add_motion
+0,Vector,3,0,0,2,ease_in_out_Cubic
+end_motion
+
+add_model
+sphare.obj
+
+change_target
+1
+
+add_motion
+0,Vector,-3,0,0,2,ease_in_out_Cubic
+push

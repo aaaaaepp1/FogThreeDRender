@@ -22,6 +22,7 @@ __date__ = '2017/02/18'
 
 #20170219 / 3Dオブジェクト（ポリゴンの集合）を表す単語に、objectとmodelが混在している
 #20170222 / ってかClientManageControlはFTRenderControlに命令を送るべきちゃう？
+#20170228 / 3Dモデルが0個でもopenできるようにする
 
 class Time(object):
 	def __init__(self):
@@ -55,6 +56,7 @@ class ClientMessageControl(object):
 		self._add_motion = False
 		self._add_model = False
 		self._setting = False
+		self._change_target = False
 
 		return
 
@@ -66,8 +68,8 @@ class ClientMessageControl(object):
 			
 			a_model = FTRenderModel(self)
 			a_3Dmodel = FTRenderModelObj()
-			a_3Dmodel.loadObjModel('models' + os.sep + 'monkey.obj')
-			a_3Dmodel.rgb(0.5, 0.5, 0.5)
+			a_3Dmodel.loadObjModel('models' + os.sep + 'sphare.obj')
+			a_3Dmodel.rgb(1.0, 1.0, 1.0)
 			a_model.add_3d_models(a_3Dmodel)
 			self._model = a_model
 			a_model.open()
@@ -92,13 +94,26 @@ class ClientMessageControl(object):
 		elif line == 'push':
 			self._add_motion = False
 			self._add_model = False
+			self._setting = False
+			self._change_target = False
 			return True
+		elif line == 'reset':
+			self._model._controller.reset_models()
+			self._add_motion = False
+			self._add_model = False
+			self._setting = False
+			self._change_target = False
+			return True
+		elif line == 'add_motion': 
+			self._add_motion = True
 		elif line == 'end_motion':
 			self._add_motion = False
-		elif line == 'end_motion':
-			self._add_model = False
+		elif line == 'add_model':
+			self._add_model = True
 		elif line == 'setting':
 			self._setting = True
+		elif line == 'change_target':
+			self._change_target = True
 		elif self._add_motion:
 			lines = line.split(',')
 			if lines[1] == 'Vector':
@@ -114,15 +129,32 @@ class ClientMessageControl(object):
 				self._model.add_motion_pos(start_position, end_position, start_time, ease_time, lines[9])
 
 		elif self._add_model:
-			pass
+			lines = line.split(',')
+			_3Dmodels = []
+			for each_line in lines:
+				a_3Dmodel = FTRenderModelObj()
+				a_3Dmodel.loadObjModel('models' + os.sep + each_line)
+				_3Dmodels.append(a_3Dmodel)
+
+			self._model.add_3d_models(*_3Dmodels)
+			self._add_model = False
+			
 		elif self._setting:
 			lines = line.split(',')
 			if lines[0] == 'rgb':
 				self._model.rgb(float(lines[1]), float(lines[2]), float(lines[3]))
+			elif lines[0] == 'camera':
+				self._model._controller.set_camera_position(float(lines[1]), float(lines[2]), float(lines[3]))
+			elif lines[0] == 'fovy':
+				self._model._controller.set_fovy(float(lines[1]))
+			elif lines[0] == 'model_scale':
+				self._model._controller.set_model_scale(float(lines[1]))
 			self._setting = False
 			return True
-		elif line == 'add_motion': self._add_motion = True
-		elif line == 'add_model': self._add_model = True
+
+		elif self._change_target:
+			self._model.change_handle_object(int(float(line)))
+			self._change_target = False
 
 		return False
 
@@ -150,7 +182,7 @@ class Projection(object):
 		"""視点を応答する。"""
 		if TRACE: print_doc(__name__, self)
 
-		if self._eye_point == None: self.eye_point_([0.0, 0.0, 10.0])
+		if self._eye_point == None: self.eye_point_([0.0, 0.0, 0.0])
 		return self._eye_point
 
 	def eye_point_(self, a_point):
@@ -166,7 +198,7 @@ class Projection(object):
 		"""注視点を応答する。"""
 		if TRACE: print_doc(__name__, self)
 
-		if self._sight_point == None: self.sight_point_([0.0, 0.0, 0.0])
+		if self._sight_point == None: self.sight_point_([0.0, 0.0, 10.0])
 		return self._sight_point
 
 	def sight_point_(self, a_point):
@@ -267,6 +299,7 @@ class FTRenderModel(object):
 		self._view = view_class(self)
 		self._controller = self._view._controller
 		self._client_message_control = a_client_message_control
+		self._current_color = [1,1,1]
 
 		return
 
@@ -274,6 +307,7 @@ class FTRenderModel(object):
 		if TRACE: print_doc(__name__, self)
 
 		for each in model_objects:
+			each.rgb(*self._current_color)
 			self._models.append(each)
 
 		return
@@ -296,14 +330,19 @@ class FTRenderModel(object):
 
 		return "Fog 3D Render"
 
-	def change_handle_object(self):
+	def change_handle_object(self, number = -1):
 		"""制御するモデルを切り替える"""
 		if TRACE: print_doc(__name__, self)
 
-		if self._handle_object+1 >= len(self._models):
-			self._handle_object = 0
+		if number > -1 and len(self._models) > number:
+			self._handle_object = number
 		else:
-			self._handle_object += 1
+			if self._handle_object+1 >= len(self._models):
+				self._handle_object = 0
+			else:
+				self._handle_object += 1
+
+		return
 
 	def open(self):
 		if TRACE: print_doc(__name__, self)
@@ -314,6 +353,8 @@ class FTRenderModel(object):
 	def rgb(self, red, green, blue):
 		"""全モデルの色を変更"""
 		if TRACE: print_doc(__name__, self)
+
+		self._current_color = [red, green, blue]
 
 		for each in self._models:
 			each.rgb(red, green, blue)
@@ -337,16 +378,18 @@ class FTRenderModel(object):
 		if TRACE: print_doc(__name__, self)
 
 		for (i, each) in enumerate(self._models):
-			# glScale(each._model_scale, each._model_scale, each._model_scale)
+			glScale(each._model_scale, each._model_scale, each._model_scale)
 			glTranslated(each._position_x, each._position_y, each._position_z)
 			if(i != a_handle_object):
 				each.rendering()
-			# glScale(1/each._model_scale, 1/each._model_scale, 1/each._model_scale)
+			glScale(1/each._model_scale, 1/each._model_scale, 1/each._model_scale)
 			glTranslated(-1*each._position_x, -1*each._position_y, -1*each._position_z)
 
 		model = self._models[a_handle_object]
 		glTranslated(model._position_x, model._position_y, model._position_z)
+		glScale(each._model_scale, each._model_scale, each._model_scale)
 		model.rendering()
+		glScale(1/each._model_scale, 1/each._model_scale, 1/each._model_scale)
 		glTranslated(-1*model._position_x, -1*model._position_y, -1*model._position_z)
 		return
 
@@ -354,7 +397,7 @@ class FTRenderModel(object):
 		"""フレームごとのModelのidle処理、これがglutIdleFuncに入る"""
 		if TRACE: print_doc(__name__, self)
 
-		# print "len: {}".format(sum([len(each) for each in [models._easing_list for models in self._models]]))
+		#print "len: {}".format(sum([len(each) for each in [models._easing_list for models in self._models]]))
 		if sum([len(each) for each in [models._easing_list for models in self._models]]) == 0 and self._client_message_control != None:
 			self._client_message_control.wait_commands()
 			self.start_motion_()
@@ -393,8 +436,8 @@ class FTRenderView(object):
 		self._angle_x = 0.0
 		self._angle_y = 0.0
 		self._angle_z = 0.0
-		self._width = 400
-		self._height = 400
+		self._width = 1280
+		self._height = 800
 
 		glutInit(sys.argv)
 		glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH)
@@ -450,19 +493,19 @@ class FTRenderView(object):
 		glClearColor(0.0, 0.0, 0.0, 1.0)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-		glEnable(GL_LIGHTING)
-		glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.5, 0.5, 0.5, 1.0])
-		glLightModelf(GL_LIGHT_MODEL_LOCAL_VIEWER, 0.0)
-		glLightModelf(GL_LIGHT_MODEL_TWO_SIDE, 1.0)
-		glEnable(GL_LIGHT0)
-		glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 1.0, 0.0])
-		glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [0.0, 0.0, -1.0])
-		glLightfv(GL_LIGHT0, GL_SPOT_CUTOFF, 90.0)
-		glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.5, 0.5, 0.5, 1.0])
-		glLightfv(GL_LIGHT0, GL_SPECULAR, [0.5, 0.5, 0.5, 1.0])
-		glLightfv(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.0)
-		glLightfv(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.0)
-		glLightfv(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0)
+		# glEnable(GL_LIGHTING)
+		# glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.5, 0.5, 0.5, 1.0])
+		# glLightModelf(GL_LIGHT_MODEL_LOCAL_VIEWER, 0.0)
+		# glLightModelf(GL_LIGHT_MODEL_TWO_SIDE, 1.0)
+		# glEnable(GL_LIGHT0)
+		# glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 1.0, 0.0])
+		# glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [0.0, 0.0, -1.0])
+		# glLightfv(GL_LIGHT0, GL_SPOT_CUTOFF, 90.0)
+		# glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.5, 0.5, 0.5, 1.0])
+		# glLightfv(GL_LIGHT0, GL_SPECULAR, [0.5, 0.5, 0.5, 1.0])
+		# glLightfv(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.0)
+		# glLightfv(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.0)
+		# glLightfv(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0)
 
 		glRotated(self._angle_x, 1.0, 0.0, 0.0)
 		glRotated(self._angle_y, 0.0, 1.0, 0.0)
@@ -565,11 +608,60 @@ class FTRenderControl(object):
 
 		return
 
-	def move(x, y, z):
+	def reset_models(self):
+		"""0番目のモデル以外を消去し、0番目のモデルを0,0,0に移動させる"""
+		if TRACE: print_doc(__name__, self)
 
-		model._position_x += x
-		model._position_y += y
-		model._position_z += z
+		a_3Dmodel = self._model._models[0]
+		self._model._models = []
+		self._model.add_3d_models(a_3Dmodel)
+
+		self._model.change_handle_object(0)
+		self.set_position(0,0,0)
+
+		return
+
+	def set_position(self, x, y, z):
+		"""位置を設定"""
+		if TRACE: print_doc(__name__, self)
+		
+		model = None
+		if self._model._handle_object < len(self._model._models):
+			model = self._model._models[self._model._handle_object]
+
+		model._position_x = x
+		model._position_y = y
+		model._position_z = z
+
+		return
+
+	def set_model_scale(self, scale):
+		"""モデルのサイズ設定"""
+		if TRACE: print_doc(__name__, self)
+
+		model = None
+		if self._model._handle_object < len(self._model._models):
+			model = self._model._models[self._model._handle_object]
+
+		model._model_scale = scale
+
+		return
+
+	def set_camera_position(self, x, y, z):
+		"""カメラの位置を設定"""
+		if TRACE: print_doc(__name__, self)
+
+		projection = self._model._projection
+		projection.eye_point_([x, y, z])
+
+		return
+
+	def set_fovy(self, fovy):
+		"""視野角を決定"""
+		if TRACE: print_doc(__name__, self)
+
+		projection = self._model._projection
+		projection.fovy_(fovy)
 
 		return
 
@@ -601,11 +693,12 @@ class FTRenderControl(object):
 	def idle(self):
 		"""フレームごとのcontrol処理"""
 		if TRACE: print_doc(__name__, self)
-		model = None
-		if self._model._handle_object < len(self._model._models):
-			model = self._model._models[self._model._handle_object]
+		# model = None
+		# if self._model._handle_object < len(self._model._models):
+		# 	model = self._model._models[self._model._handle_object]
 
-		if model != None: model.idle()
+		for each in self._model._models:
+			each.idle()
 
 		return
 
@@ -699,7 +792,6 @@ class OpenGL3DModel(object):
 
 	def __init__(self):
 		if TRACE: print_doc(__name__, self)
-
 
 		self._display_object = []
 		self._display_list = None

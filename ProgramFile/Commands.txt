@@ -12,9 +12,7 @@ end_motion: モーション登録終了
 send_motion_data: モーションデータ送信
 
 add_model: モデルデータ送信
-  [モデル名.obj]
-
-end_model: モデルデータ送信終了
+  [モデル名.obj],[モデル名.obj], …
 
 command_for: 特定コンピュータ向けコマンド
   [ip address1],[ip address2]…
@@ -23,9 +21,12 @@ command_for_end: 特定コンピュータ向け終了
 
 setting: 投影設定
   [‘rgb’],[red],[green],[blue]
-  [‘camera’]
+  [‘camera’],[x],[y],[z]
+  [‘fovy’],[fovy]
+  [‘model_scale’],[scale]
 
 push: 実行
 
 change_target: ターゲットオブジェクト変更
 
+reset: 初期状態に変更
